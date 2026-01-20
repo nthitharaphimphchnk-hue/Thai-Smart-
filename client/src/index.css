@@ -3,14 +3,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@font-face {
-  font-family: "Noto Sans Thai";
-  src: url("https://fonts.gstatic.com/s/notosansthai/v25/iJWnBXeUZi_OHPqn4wq6hQ2_hbJ1xyN9wd43SofNWcd1MKVQt_So_9CdU5RtpzF-QRvzzXg.woff2")
-    format("woff2");
-  font-weight: 400 700;
-  font-style: normal;
-  font-display: swap;
-}
+/* Noto Sans Thai font is loaded via Google Fonts in index.html */
 
 @theme inline {
   --font-sans: "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif,

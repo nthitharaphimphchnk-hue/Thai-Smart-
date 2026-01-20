@@ -1,7 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { getLoginUrl } from "@/const";
-import { ShoppingCart, Package, Users, MessageCircle, LogIn, LogOut, TrendingUp } from "lucide-react";
+import { ShoppingCart, Package, Users, MessageCircle, LogIn, LogOut, TrendingUp, UserPlus } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 
@@ -30,10 +29,16 @@ export default function Home() {
             สมุดจดร้านดิจิทัล<br />
             ช่วยให้ร้านทำงานน้อยลง
           </p>
-          <a href={getLoginUrl()} className="ts-btn-primary w-full max-w-xs">
-            <LogIn className="w-6 h-6" />
-            เข้าสู่ระบบ
-          </a>
+          <div className="w-full max-w-xs space-y-3">
+            <Link href="/login" className="ts-btn-primary w-full flex items-center justify-center gap-3">
+              <LogIn className="w-5 h-5" />
+              <span>เข้าสู่ระบบ</span>
+            </Link>
+            <Link href="/register" className="ts-btn-secondary w-full flex items-center justify-center gap-3">
+              <UserPlus className="w-5 h-5" />
+              <span>สมัครสมาชิก</span>
+            </Link>
+          </div>
         </div>
         
         {/* Footer */}

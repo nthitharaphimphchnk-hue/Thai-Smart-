@@ -13,9 +13,31 @@ export function useAuth(options?: UseAuthOptions) {
     options ?? {};
   const utils = trpc.useUtils();
 
+  // Get initial user data from localStorage if available
+  const getInitialUserData = () => {
+    try {
+      const stored = localStorage.getItem("manus-runtime-user-info");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === "object") {
+          return parsed;
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return undefined;
+  };
+
+  const initialUserData = getInitialUserData();
+
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
+    // Use localStorage data as initial data to prevent showing welcome screen immediately
+    initialData: initialUserData,
+    // But still refetch to verify with server
+    placeholderData: initialUserData,
   });
 
   const logoutMutation = trpc.auth.logout.useMutation({

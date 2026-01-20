@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { ArrowLeft, Package, Plus, Edit2, Trash2, Save, X } from "lucide-react";
+import { ArrowLeft, Package, Plus, Edit2, Trash2, Save, X, Upload, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import {
@@ -32,8 +32,10 @@ interface ProductForm {
 
 export default function Products() {
   const [showForm, setShowForm] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<ProductForm>({
     name: "",
     price: "",
@@ -68,6 +70,20 @@ export default function Products() {
       refetch();
     },
     onError: () => toast.error("เกิดข้อผิดพลาด"),
+  });
+
+  const importProducts = trpc.products.import.useMutation({
+    onSuccess: (data) => {
+      toast.success(`นำเข้าสินค้าสำเร็จ ${data.count} รายการ`);
+      setShowImportDialog(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "เกิดข้อผิดพลาดในการนำเข้าสินค้า");
+    },
   });
 
   const resetForm = () => {
@@ -121,6 +137,70 @@ export default function Products() {
     }
   };
 
+  const parseCSV = (text: string): Array<{ name: string; price: string | number; stock?: number; minStock?: number }> => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return [];
+    
+    // Check if first line is header
+    const hasHeader = lines[0].toLowerCase().includes('name') || lines[0].toLowerCase().includes('ชื่อ');
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+    
+    return dataLines.map((line) => {
+      // Support both comma and tab separated
+      const parts = line.includes('\t') ? line.split('\t') : line.split(',').map(p => p.trim());
+      
+      return {
+        name: parts[0]?.trim() || '',
+        price: parts[1]?.trim() || '0',
+        stock: parts[2] ? parseInt(parts[2].trim()) || 0 : undefined,
+        minStock: parts[3] ? parseInt(parts[3].trim()) || 5 : undefined,
+      };
+    }).filter(p => p.name); // Filter out empty names
+  };
+
+  const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    
+    if (fileExtension !== 'csv' && fileExtension !== 'json') {
+      toast.error("รองรับเฉพาะไฟล์ CSV หรือ JSON");
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      let products: Array<{ name: string; price: string | number; stock?: number; minStock?: number }> = [];
+
+      if (fileExtension === 'csv') {
+        products = parseCSV(text);
+      } else if (fileExtension === 'json') {
+        const jsonData = JSON.parse(text);
+        if (Array.isArray(jsonData)) {
+          products = jsonData.map((item: any) => ({
+            name: item.name || item.ชื่อสินค้า || '',
+            price: item.price || item.ราคา || '0',
+            stock: item.stock ?? item.จำนวนคงเหลือ,
+            minStock: item.minStock ?? item.แจ้งเตือนเมื่อเหลือ,
+          })).filter((p: any) => p.name);
+        } else {
+          toast.error("ไฟล์ JSON ต้องเป็น array ของสินค้า");
+          return;
+        }
+      }
+
+      if (products.length === 0) {
+        toast.error("ไม่พบข้อมูลสินค้าในไฟล์");
+        return;
+      }
+
+      importProducts.mutate({ products });
+    } catch (error: any) {
+      toast.error(`เกิดข้อผิดพลาดในการอ่านไฟล์: ${error.message}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -131,14 +211,26 @@ export default function Products() {
           </Button>
         </Link>
         <h1 className="text-xl font-bold flex-1">จัดการสินค้า</h1>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-secondary-foreground hover:bg-white/10"
-          onClick={() => setShowForm(true)}
-        >
-          <Plus className="w-6 h-6" />
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-secondary-foreground hover:bg-white/10"
+            onClick={() => setShowImportDialog(true)}
+            title="นำเข้าสินค้า"
+          >
+            <Upload className="w-6 h-6" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-secondary-foreground hover:bg-white/10"
+            onClick={() => setShowForm(true)}
+            title="เพิ่มสินค้าใหม่"
+          >
+            <Plus className="w-6 h-6" />
+          </Button>
+        </div>
       </header>
 
       {/* Content */}
@@ -270,6 +362,73 @@ export default function Products() {
             >
               <Save className="w-4 h-4 mr-2" />
               {createProduct.isPending || updateProduct.isPending ? "กำลังบันทึก..." : "บันทึก"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              นำเข้าสินค้า
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="text-sm font-medium mb-2">รองรับไฟล์ CSV หรือ JSON</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                <strong>รูปแบบ CSV:</strong><br />
+                ชื่อสินค้า,ราคา,จำนวนคงเหลือ,แจ้งเตือนเมื่อเหลือ
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <strong>รูปแบบ JSON:</strong><br />
+                [&#123;"name": "สินค้า1", "price": "100", "stock": 10, "minStock": 5&#125;, ...]
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.json"
+                onChange={handleFileImport}
+                className="hidden"
+                id="file-import"
+              />
+              <label htmlFor="file-import">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={importProducts.isPending}
+                  asChild
+                >
+                  <span className="cursor-pointer">
+                    <FileText className="w-4 h-4 mr-2" />
+                    เลือกไฟล์ CSV หรือ JSON
+                  </span>
+                </Button>
+              </label>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowImportDialog(false);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = "";
+                }
+              }}
+              className="flex-1"
+            >
+              <X className="w-4 h-4 mr-2" />
+              ยกเลิก
             </Button>
           </DialogFooter>
         </DialogContent>

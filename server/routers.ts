@@ -1,4 +1,4 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -16,6 +16,93 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+    register: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        password: z.string().min(6),
+        name: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const user = await db.createUserWithPassword({
+            email: input.email,
+            password: input.password,
+            name: input.name,
+          });
+
+          // Create session token
+          const { sdk } = await import("./_core/sdk");
+          const sessionToken = await sdk.createSessionToken(user.id, {
+            name: user.name || "User",
+            expiresInMs: ONE_YEAR_MS,
+          });
+
+          // Set cookie
+          const cookieOptions = getSessionCookieOptions(ctx.req);
+          ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+          // Update last signed in
+          await db.updateUserLastSignedIn(user.id);
+
+          return { success: true, user };
+        } catch (error: any) {
+          console.error("[Auth] Register error:", error);
+          if (error.message === "Email already registered" || error.message?.includes("duplicate")) {
+            throw new Error("อีเมลนี้ถูกใช้งานแล้ว");
+          }
+          // Log full error for debugging
+          console.error("[Auth] Register error details:", {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+          });
+          throw new Error(error.message || "เกิดข้อผิดพลาดในการสมัครสมาชิก");
+        }
+      }),
+    login: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        password: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const user = await db.getUserByEmail(input.email);
+          
+          if (!user) {
+            throw new Error("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+          }
+
+          const isValid = await db.verifyPassword(user, input.password);
+          if (!isValid) {
+            throw new Error("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+          }
+
+          // Create session token
+          const { sdk } = await import("./_core/sdk");
+          const sessionToken = await sdk.createSessionToken(user.id, {
+            name: user.name || "User",
+            expiresInMs: ONE_YEAR_MS,
+          });
+
+          // Set cookie
+          const cookieOptions = getSessionCookieOptions(ctx.req);
+          ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+          // Update last signed in
+          await db.updateUserLastSignedIn(user.id);
+
+          // Don't return password
+          const { password: _, ...userWithoutPassword } = user;
+          return { success: true, user: userWithoutPassword };
+        } catch (error: any) {
+          console.error("[Auth] Login error:", error);
+          // If it's already our custom error, re-throw it
+          if (error.message === "อีเมลหรือรหัสผ่านไม่ถูกต้อง") {
+            throw error;
+          }
+          throw new Error(error.message || "เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
+        }
+      }),
   }),
 
   // ==================== PRODUCTS ====================
@@ -44,7 +131,7 @@ export const appRouter = router({
     
     update: protectedProcedure
       .input(z.object({
-        id: z.number(),
+        id: z.union([z.string(), z.number()]),
         name: z.string().min(1).optional(),
         price: z.string().optional(),
         stock: z.number().optional(),
@@ -57,7 +144,7 @@ export const appRouter = router({
       }),
     
     delete: protectedProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.union([z.string(), z.number()]) }))
       .mutation(async ({ ctx, input }) => {
         await db.deleteProduct(input.id, ctx.user.id);
         return { success: true };
@@ -66,6 +153,37 @@ export const appRouter = router({
     lowStock: protectedProcedure.query(async ({ ctx }) => {
       return db.getLowStockProducts(ctx.user.id);
     }),
+    
+    import: protectedProcedure
+      .input(z.object({
+        products: z.array(z.object({
+          name: z.string().min(1),
+          price: z.union([z.string(), z.number()]),
+          stock: z.number().optional(),
+          minStock: z.number().optional(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const productsToImport = input.products.map((p) => ({
+            userId: ctx.user.id,
+            name: p.name,
+            price: typeof p.price === "string" ? p.price : String(p.price),
+            stock: p.stock,
+            minStock: p.minStock,
+          }));
+          
+          const createdIds = await db.createProductsBulk(productsToImport);
+          return { 
+            success: true, 
+            count: createdIds.length,
+            ids: createdIds 
+          };
+        } catch (error: any) {
+          console.error("[Products] Import error:", error);
+          throw new Error(error.message || "เกิดข้อผิดพลาดในการนำเข้าสินค้า");
+        }
+      }),
   }),
 
   // ==================== SALES ====================
@@ -79,7 +197,7 @@ export const appRouter = router({
     create: protectedProcedure
       .input(z.object({
         items: z.array(z.object({
-          productId: z.number(),
+          productId: z.union([z.string(), z.number()]),
           productName: z.string(),
           quantity: z.number().min(1),
           unitPrice: z.string(),
@@ -93,7 +211,7 @@ export const appRouter = router({
           return sum + (parseFloat(item.unitPrice) * item.quantity);
         }, 0);
         
-        let customerId: number | null = null;
+        let customerId: string | number | null = null;
         
         // Handle credit sale - create or find customer
         if (input.paymentType === "credit" && input.customerName) {
@@ -105,7 +223,7 @@ export const appRouter = router({
               totalDebt: totalAmount.toFixed(2),
             });
           } else {
-            customerId = customer.id;
+            customerId = customer.id as string | number;
             await db.updateCustomerDebt(customer.id, totalAmount);
           }
         }
@@ -155,7 +273,7 @@ export const appRouter = router({
     
     payDebt: protectedProcedure
       .input(z.object({
-        customerId: z.number(),
+        customerId: z.union([z.string(), z.number()]),
         amount: z.number().positive(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -199,7 +317,7 @@ export const appRouter = router({
   // ==================== RECEIPTS ====================
   receipts: router({
     generate: protectedProcedure
-      .input(z.object({ saleId: z.number() }))
+      .input(z.object({ saleId: z.union([z.string(), z.number()]) }))
       .query(async ({ ctx, input }) => {
         const receiptData = await db.getReceiptData(input.saleId);
         const receiptText = db.formatReceiptText(receiptData);

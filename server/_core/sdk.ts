@@ -4,7 +4,7 @@ import axios, { type AxiosInstance } from "axios";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
-import type { User } from "../../drizzle/schema";
+import type { User } from "../db";
 import * as db from "../db";
 import { ENV } from "./env";
 import type {
@@ -160,19 +160,28 @@ class SDKServer {
   }
 
   /**
-   * Create a session token for a Manus user openId
+   * Create a session token for a Manus user openId or userId
    * @example
    * const sessionToken = await sdk.createSessionToken(userInfo.openId);
    */
   async createSessionToken(
-    openId: string,
+    openIdOrUserId: string,
     options: { expiresInMs?: number; name?: string } = {}
   ): Promise<string> {
+    // For email/password users, openId will be userId
+    // For OAuth users, openId will be the actual openId
+    
+    // Ensure appId is not empty - use default if not set
+    const appId = ENV.appId || "default-app-id";
+    
+    // Ensure name is not empty - use default if not set
+    const name = options.name?.trim() || "User";
+    
     return this.signSession(
       {
-        openId,
-        appId: ENV.appId,
-        name: options.name || "",
+        openId: openIdOrUserId,
+        appId,
+        name,
       },
       options
     );
@@ -201,7 +210,7 @@ class SDKServer {
     cookieValue: string | undefined | null
   ): Promise<{ openId: string; appId: string; name: string } | null> {
     if (!cookieValue) {
-      console.warn("[Auth] Missing session cookie");
+      // Don't log warning for missing cookie - it's normal for unauthenticated requests
       return null;
     }
 
@@ -268,7 +277,29 @@ class SDKServer {
 
     const sessionUserId = session.openId;
     const signedInAt = new Date();
+    
+    // Try to find user by openId (OAuth users) or by userId (email/password users)
     let user = await db.getUserByOpenId(sessionUserId);
+
+    // If not found by openId, try to find by userId (for email/password users)
+    if (!user) {
+      try {
+        // Check if sessionUserId is a valid MongoDB ObjectId (email/password user)
+        const mongoose = (await import("mongoose")).default;
+        if (mongoose.Types.ObjectId.isValid(sessionUserId)) {
+          const UserModel = (await import("../models/User")).User;
+          const userDoc = await UserModel.findById(sessionUserId);
+          if (userDoc) {
+            user = {
+              ...userDoc.toObject(),
+              id: userDoc._id.toString(),
+            } as User;
+          }
+        }
+      } catch (error) {
+        // Ignore error, continue to OAuth flow
+      }
+    }
 
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
@@ -292,10 +323,8 @@ class SDKServer {
       throw ForbiddenError("User not found");
     }
 
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
+    // Update last signed in
+    await db.updateUserLastSignedIn(user.id);
 
     return user;
   }

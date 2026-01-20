@@ -1,0 +1,8 @@
+{
+  "query": "select DATE_FORMAT(`createdAt`, '%Y-%m') as `sale_month`, DATE_FORMAT(`createdAt`, '%b %Y'), COALESCE(SUM(`totalAmount`), 0), COUNT(*) from `sales` where (`sales`.`userId` = 1 and `sales`.`createdAt` >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)) group by sale_month order by sale_month;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user xPPqfHznEAfm8UX.root --database 2bLXbDKTKg2mm4NSzmRxMc --execute select DATE_FORMAT(`createdAt`, '%Y-%m') as `sale_month`, DATE_FORMAT(`createdAt`, '%b %Y'), COALESCE(SUM(`totalAmount`), 0), COUNT(*) from `sales` where (`sales`.`userId` = 1 and `sales`.`createdAt` >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)) group by sale_month order by sale_month;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1055 (42000) at line 1: Expression #2 of SELECT list is not in GROUP BY clause and contains nonaggregated column '2bLXbDKTKg2mm4NSzmRxMc.sales.createdAt' which is not functionally dependent on columns in GROUP BY clause; this is incompatible with sql_mode=only_full_group_by"
+  ]
+}

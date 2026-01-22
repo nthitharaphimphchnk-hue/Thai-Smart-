@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 interface PrintReceiptProps {
   receiptText: string;
-  saleId: number;
+  saleId: string | number;
   onClose?: () => void;
 }
 
@@ -100,11 +100,22 @@ export default function PrintReceipt({
         </p>
       </div>
 
-      {/* Preview ใบเสร็จ */}
-      <Card className="bg-gray-50 p-3">
-        <pre className="text-xs font-mono whitespace-pre-wrap break-words">
-          {receiptText}
-        </pre>
+      {/* Preview ใบเสร็จ - Optimized for 80mm thermal printer */}
+      <Card className="bg-white p-4 border-2 border-gray-300">
+        <div className="mx-auto" style={{ width: "288px", maxWidth: "100%" }}>
+          {/* 80mm = ~288px at 96 DPI (72mm printable area) */}
+          <pre 
+            className="text-[10px] font-mono whitespace-pre-wrap break-words leading-tight"
+            style={{
+              fontFamily: "'Courier New', 'Courier', monospace",
+              letterSpacing: "0.5px",
+              lineHeight: "1.3",
+              wordBreak: "break-word",
+            }}
+          >
+            {receiptText}
+          </pre>
+        </div>
       </Card>
 
       {/* ขั้นตอนการเชื่อมต่อ */}

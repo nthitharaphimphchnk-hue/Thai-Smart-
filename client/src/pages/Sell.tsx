@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { playBeep, playOutOfStockBeep } from "@/lib/sound";
 import { ArrowLeft, Plus, Minus, ShoppingCart, Trash2, CreditCard, Banknote, Check, Printer } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -15,14 +16,14 @@ import {
 import PrintReceipt from "./PrintReceipt";
 
 interface CartItem {
-  productId: number;
+  productId: string;
   productName: string;
   quantity: number;
   unitPrice: string;
 }
 
 interface SaleResponse {
-  saleId: number;
+  saleId: string;
   totalAmount: number;
 }
 
@@ -30,18 +31,22 @@ export default function Sell() {
   const [, setLocation] = useLocation();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentType, setPaymentType] = useState<"cash" | "credit">("cash");
   const [customerName, setCustomerName] = useState("");
   const [showPrintReceipt, setShowPrintReceipt] = useState(false);
-  const [lastSaleId, setLastSaleId] = useState<number | null>(null);
+  const [lastSaleId, setLastSaleId] = useState<string | null>(null);
   const [receiptText, setReceiptText] = useState("");
 
   const { data: products, isLoading } = trpc.products.list.useQuery();
   const { data: receiptData } = trpc.receipts.generate.useQuery(
-    { saleId: lastSaleId || 0 },
+    { saleId: lastSaleId || "" },
     { enabled: lastSaleId !== null }
   );
+  
+  const utils = trpc.useUtils();
 
   const createSale = trpc.sales.create.useMutation({
     onSuccess: (data: SaleResponse) => {
@@ -51,13 +56,6 @@ export default function Sell() {
       setShowCheckout(false);
       setCustomerName("");
       setPaymentType("cash");
-      // ให้ผู้ใช้เลือกว่าจะพิมพ์หรือไม่
-      toast.info("ต้องการพิมพ์ใบเสร็จหรือไม่", {
-        action: {
-          label: "พิมพ์",
-          onClick: () => setShowPrintReceipt(true),
-        },
-      });
     },
     onError: () => {
       toast.error("เกิดข้อผิดพลาด กรุณาลองใหม่");
@@ -68,7 +66,7 @@ export default function Sell() {
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const addToCart = (product: { id: number; name: string; price: string }) => {
+  const addToCart = (product: { id: string; name: string; price: string }) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.productId === product.id);
       if (existing) {
@@ -90,7 +88,58 @@ export default function Sell() {
     });
   };
 
-  const updateQuantity = (productId: number, delta: number) => {
+  const handleBarcodeScan = async () => {
+    if (!barcodeInput.trim()) return;
+
+    const barcode = barcodeInput.trim();
+    setBarcodeInput(""); // Clear input immediately for next scan
+
+    try {
+      const product = await utils.products.byBarcode.fetch({ barcode });
+      
+      if (product) {
+        if (product.stock <= 0) {
+          playOutOfStockBeep();
+          toast.error("สินค้าหมด");
+          setTimeout(() => {
+            barcodeInputRef.current?.focus();
+          }, 100);
+          return;
+        }
+        
+        addToCart({
+          id: String(product.id),
+          name: product.name,
+          price: product.price,
+        });
+        playBeep();
+        toast.success(`เพิ่ม ${product.name} ลงตะกร้าแล้ว`);
+        // Auto focus กลับไปที่ input
+        setTimeout(() => {
+          barcodeInputRef.current?.focus();
+        }, 100);
+      } else {
+        toast.error("ไม่พบสินค้าที่มีบาร์โค้ดนี้");
+        setTimeout(() => {
+          barcodeInputRef.current?.focus();
+        }, 100);
+      }
+    } catch (error) {
+      toast.error("ไม่พบสินค้าที่มีบาร์โค้ดนี้");
+      setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 100);
+    }
+  };
+
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleBarcodeScan();
+    }
+  };
+
+  const updateQuantity = (productId: string, delta: number) => {
     setCart((prev) =>
       prev
         .map((item) =>
@@ -102,7 +151,7 @@ export default function Sell() {
     );
   };
 
-  const removeFromCart = (productId: number) => {
+  const removeFromCart = (productId: string) => {
     setCart((prev) => prev.filter((item) => item.productId !== productId));
   };
 
@@ -132,10 +181,21 @@ export default function Sell() {
     });
   };
 
+  const focusBarcodeInput = () => {
+    barcodeInputRef.current?.focus();
+  };
+
   // ใช้ receiptData เมื่อมีข้อมูล
   if (receiptData && !receiptText && receiptData.receiptText) {
     setReceiptText(receiptData.receiptText);
   }
+
+  useEffect(() => {
+    if (receiptText && lastSaleId) {
+      // เปิด dialog พิมพ์ใบเสร็จอัตโนมัติ
+      setShowPrintReceipt(true);
+    }
+  }, [receiptText, lastSaleId]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -145,11 +205,12 @@ export default function Sell() {
           {receiptText && (
             <PrintReceipt
               receiptText={receiptText}
-              saleId={lastSaleId || 0}
+              saleId={lastSaleId || ""}
               onClose={() => {
                 setShowPrintReceipt(false);
                 setLastSaleId(null);
                 setReceiptText("");
+                focusBarcodeInput();
               }}
             />
           )}
@@ -173,6 +234,19 @@ export default function Sell() {
           )}
         </div>
       </header>
+
+      {/* Barcode Scanner */}
+      <div className="p-4 bg-card border-b border-border">
+        <Input
+          ref={barcodeInputRef}
+          placeholder="ยิงบาร์โค้ดสินค้า..."
+          value={barcodeInput}
+          onChange={(e) => setBarcodeInput(e.target.value)}
+          onKeyDown={handleBarcodeKeyDown}
+          className="ts-input"
+          autoFocus
+        />
+      </div>
 
       {/* Search */}
       <div className="p-4 bg-card border-b border-border">
@@ -277,11 +351,11 @@ export default function Sell() {
             {receiptText && (
               <Button
                 variant="outline"
-                size="icon"
+                className="px-4"
                 onClick={() => setShowPrintReceipt(true)}
-                title="พิมพ์ใบเสร็จ"
               >
-                <Printer className="w-5 h-5" />
+                <Printer className="w-4 h-4 mr-2" />
+                <span className="text-sm font-medium">พิมพ์ใบเสร็จ</span>
               </Button>
             )}
           </div>

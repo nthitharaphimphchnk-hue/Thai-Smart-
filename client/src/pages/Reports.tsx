@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { ArrowLeft, TrendingUp, Calendar, Package, Loader2 } from "lucide-react";
+import { ArrowLeft, TrendingUp, Calendar, Package, Loader2, FileText } from "lucide-react";
 import { Link } from "wouter";
+import ShiftControl from "@/components/ShiftControl";
 import {
   BarChart,
   Bar,
@@ -82,16 +83,27 @@ export default function Reports() {
             <p className="text-xs opacity-80">สรุปยอดขายรายวันและรายเดือน</p>
           </div>
         </div>
+        <Link href="/full-tax-invoices">
+          <Button
+            variant="ghost"
+            className="text-secondary-foreground hover:bg-white/10"
+          >
+            <FileText className="w-5 h-5 mr-2" />
+            <span className="text-sm font-medium">ใบกำกับภาษีเต็ม</span>
+          </Button>
+        </Link>
       </header>
 
       <div className="p-4 space-y-4 max-w-4xl mx-auto">
+        {/* Shift Control */}
+        <ShiftControl context="reports" />
         {/* Summary Cards */}
         <div className="grid grid-cols-3 gap-3">
           <Card className="bg-primary/10 border-primary/20">
             <CardContent className="p-3 text-center">
               <p className="text-xs text-muted-foreground mb-1">วันนี้</p>
               <p className="text-lg font-bold text-primary">
-                {formatCurrency(summary?.today.totalAmount || 0)}
+                {formatCurrency(summary?.today.totalWithVat || summary?.today.totalAmount || 0)}
               </p>
               <p className="text-xs text-muted-foreground">
                 {summary?.today.saleCount || 0} รายการ
@@ -103,7 +115,7 @@ export default function Reports() {
             <CardContent className="p-3 text-center">
               <p className="text-xs text-muted-foreground mb-1">สัปดาห์นี้</p>
               <p className="text-lg font-bold text-orange-600">
-                {formatCurrency(summary?.thisWeek.totalAmount || 0)}
+                {formatCurrency(summary?.thisWeek.totalWithVat || summary?.thisWeek.totalAmount || 0)}
               </p>
               <p className="text-xs text-muted-foreground">
                 {summary?.thisWeek.saleCount || 0} รายการ
@@ -115,7 +127,7 @@ export default function Reports() {
             <CardContent className="p-3 text-center">
               <p className="text-xs text-muted-foreground mb-1">เดือนนี้</p>
               <p className="text-lg font-bold text-green-600">
-                {formatCurrency(summary?.thisMonth.totalAmount || 0)}
+                {formatCurrency(summary?.thisMonth.totalWithVat || summary?.thisMonth.totalAmount || 0)}
               </p>
               <p className="text-xs text-muted-foreground">
                 {summary?.thisMonth.saleCount || 0} รายการ
@@ -123,6 +135,81 @@ export default function Reports() {
             </CardContent>
           </Card>
         </div>
+
+        {/* VAT Breakdown Card */}
+        {(summary?.today.vatAmount || summary?.thisWeek.vatAmount || summary?.thisMonth.vatAmount) > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">สรุป VAT</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Today */}
+                {summary?.today.vatAmount && summary.today.vatAmount > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">วันนี้</p>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span>ยอดขายก่อน VAT</span>
+                        <span>{formatCurrency(summary.today.subtotal || 0)} บาท</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>VAT รวม</span>
+                        <span>{formatCurrency(summary.today.vatAmount || 0)} บาท</span>
+                      </div>
+                      <div className="flex justify-between font-semibold border-t pt-1">
+                        <span>ยอดขายรวม VAT</span>
+                        <span className="text-primary">{formatCurrency(summary.today.totalWithVat || 0)} บาท</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* This Week */}
+                {summary?.thisWeek.vatAmount && summary.thisWeek.vatAmount > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">สัปดาห์นี้</p>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span>ยอดขายก่อน VAT</span>
+                        <span>{formatCurrency(summary.thisWeek.subtotal || 0)} บาท</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>VAT รวม</span>
+                        <span>{formatCurrency(summary.thisWeek.vatAmount || 0)} บาท</span>
+                      </div>
+                      <div className="flex justify-between font-semibold border-t pt-1">
+                        <span>ยอดขายรวม VAT</span>
+                        <span className="text-primary">{formatCurrency(summary.thisWeek.totalWithVat || 0)} บาท</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* This Month */}
+                {summary?.thisMonth.vatAmount && summary.thisMonth.vatAmount > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">เดือนนี้</p>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span>ยอดขายก่อน VAT</span>
+                        <span>{formatCurrency(summary.thisMonth.subtotal || 0)} บาท</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>VAT รวม</span>
+                        <span>{formatCurrency(summary.thisMonth.vatAmount || 0)} บาท</span>
+                      </div>
+                      <div className="flex justify-between font-semibold border-t pt-1">
+                        <span>ยอดขายรวม VAT</span>
+                        <span className="text-primary">{formatCurrency(summary.thisMonth.totalWithVat || 0)} บาท</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Charts */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

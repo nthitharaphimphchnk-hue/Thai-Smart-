@@ -13,6 +13,10 @@ import Debtors from "./pages/Debtors";
 import Products from "./pages/Products";
 import Chat from "./pages/Chat";
 import Reports from "./pages/Reports";
+import StockIn from "./pages/StockIn";
+import StockHistory from "./pages/StockHistory";
+import Settings from "./pages/Settings";
+import FullTaxInvoices from "./pages/FullTaxInvoices";
 
 function Router() {
   return (
@@ -24,8 +28,12 @@ function Router() {
       <Route path="/low-stock" component={LowStock} />
       <Route path="/debtors" component={Debtors} />
       <Route path="/products" component={Products} />
+      <Route path="/stock-in" component={StockIn} />
+      <Route path="/stock-history" component={StockHistory} />
       <Route path="/chat" component={Chat} />
       <Route path="/reports" component={Reports} />
+      <Route path="/settings" component={Settings} />
+      <Route path="/full-tax-invoices" component={FullTaxInvoices} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

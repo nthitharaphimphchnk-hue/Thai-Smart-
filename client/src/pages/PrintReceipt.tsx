@@ -1,9 +1,22 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, Printer, Bluetooth } from "lucide-react";
+import { Loader2, Printer, Bluetooth, FileText, AlertCircle, Settings, Eye } from "lucide-react";
 import { receiptPrinter, type BluetoothDevice } from "@/lib/receiptPrinter";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
+import { Link } from "wouter";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import FullTaxInvoiceDialog from "./FullTaxInvoiceDialog";
 
 interface PrintReceiptProps {
   receiptText: string;
@@ -23,6 +36,46 @@ export default function PrintReceipt({
     null
   );
   const [isConnected, setIsConnected] = useState(false);
+  const [showFullTaxInvoice, setShowFullTaxInvoice] = useState(false);
+  const [showSellerInfoAlert, setShowSellerInfoAlert] = useState(false);
+
+  // ตรวจสอบว่าบิลนี้มี VAT หรือไม่ (เพื่อแสดงปุ่มออกใบกำกับภาษีเต็ม)
+  const { data: saleData } = trpc.fullTaxInvoice.getSaleData.useQuery(
+    { saleId },
+    { enabled: true, retry: false }
+  );
+  
+  // ตรวจสอบว่ามีใบกำกับภาษีเต็มอยู่แล้วหรือไม่
+  const { data: invoiceExists } = trpc.fullTaxInvoice.checkExists.useQuery(
+    { saleId },
+    { enabled: true }
+  );
+
+  // ดึงข้อมูล Settings เพื่อตรวจสอบข้อมูลผู้ขาย
+  const { data: settings } = trpc.system.settings.get.useQuery();
+
+  // ตรวจสอบว่าข้อมูลผู้ขายครบหรือไม่
+  const isSellerInfoComplete =
+    settings?.sellerName &&
+    settings.sellerName.trim() &&
+    settings?.sellerAddress &&
+    settings.sellerAddress.trim() &&
+    settings?.sellerTaxId &&
+    settings.sellerTaxId.trim() &&
+    /^\d{13}$/.test(settings.sellerTaxId.replace(/\s|-/g, "")); // ตรวจสอบว่าเป็นตัวเลข 13 หลัก
+
+  const hasVat = saleData !== undefined; // ถ้า getSaleData สำเร็จ = มี VAT
+
+  // Handler สำหรับปุ่มออกใบกำกับภาษีเต็ม
+  const handleOpenFullTaxInvoice = () => {
+    // ตรวจสอบข้อมูลผู้ขายก่อน
+    if (!isSellerInfoComplete) {
+      setShowSellerInfoAlert(true);
+      return;
+    }
+    // ถ้าข้อมูลครบ → เปิด dialog
+    setShowFullTaxInvoice(true);
+  };
 
   const handleScanPrinters = async () => {
     setIsScanning(true);
@@ -113,8 +166,8 @@ export default function PrintReceipt({
               wordBreak: "break-word",
             }}
           >
-            {receiptText}
-          </pre>
+          {receiptText}
+        </pre>
         </div>
       </Card>
 
@@ -213,12 +266,98 @@ export default function PrintReceipt({
         )}
       </div>
 
+      {/* ปุ่มออกใบกำกับภาษีเต็ม (แสดงเฉพาะบิลที่มี VAT) */}
+      {hasVat && (
+        <div className="border-t pt-4 space-y-2">
+          {invoiceExists ? (
+            // ถ้ามีใบกำกับภาษีเต็มอยู่แล้ว → แสดงปุ่ม "ดู" และ "พิมพ์ซ้ำ"
+            <>
+              <Button
+                onClick={handleOpenFullTaxInvoice}
+                variant="outline"
+                className="w-full"
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                ดูใบกำกับภาษีเต็ม
+              </Button>
+              <Button
+                onClick={handleOpenFullTaxInvoice}
+                variant="default"
+                className="w-full"
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                พิมพ์ซ้ำ
+              </Button>
+            </>
+          ) : (
+            // ถ้ายังไม่มี → แสดงปุ่ม "ออกใบกำกับภาษีเต็ม"
+            <Button
+              onClick={handleOpenFullTaxInvoice}
+              variant="outline"
+              className="w-full"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              ออกใบกำกับภาษีเต็ม
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* ปุ่มปิด */}
       {onClose && (
         <Button onClick={onClose} variant="ghost" className="w-full">
           ปิด
         </Button>
       )}
+
+      {/* Alert Dialog - แจ้งเตือนข้อมูลผู้ขายไม่ครบ */}
+      <AlertDialog open={showSellerInfoAlert} onOpenChange={setShowSellerInfoAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-yellow-600" />
+              กรุณาตั้งค่าข้อมูลร้านก่อน
+            </AlertDialogTitle>
+            <AlertDialogDescription className="pt-2">
+              <p className="mb-3">
+                เพื่อออกใบกำกับภาษีเต็ม ต้องตั้งค่าข้อมูลร้านให้ครบถ้วนก่อน:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm mb-4">
+                {(!settings?.sellerName?.trim() && <li>ชื่อร้าน</li>)}
+                {(!settings?.sellerAddress?.trim() && <li>ที่อยู่ร้าน</li>)}
+                {(!settings?.sellerTaxId?.trim() || 
+                  !/^\d{13}$/.test(settings?.sellerTaxId?.replace(/\s|-/g, "") || "")) && (
+                  <li>เลขประจำตัวผู้เสียภาษี (13 หลัก)</li>
+                )}
+              </ul>
+              <p className="text-sm text-muted-foreground">
+                ไปตั้งค่าข้อมูลร้านได้ที่หน้า "ตั้งค่า"
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ปิด</AlertDialogCancel>
+            <Link href="/settings">
+              <AlertDialogAction asChild>
+                <Button>
+                  <Settings className="w-4 h-4 mr-2" />
+                  ไปหน้าตั้งค่าข้อมูลร้าน
+                </Button>
+              </AlertDialogAction>
+            </Link>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Full Tax Invoice Dialog */}
+      <FullTaxInvoiceDialog
+        saleId={saleId}
+        open={showFullTaxInvoice}
+        onOpenChange={setShowFullTaxInvoice}
+        onClose={() => {
+          // ไม่ต้องทำอะไรเมื่อปิด dialog
+        }}
+      />
     </div>
   );
 }

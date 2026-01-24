@@ -53,13 +53,12 @@ export default function LowStock() {
                   <div className="text-right">
                     <p className={`text-2xl font-bold ${
                       product.stock <= 0 ? 'text-ts-danger' : 
-                      product.stock <= product.minStock / 2 ? 'text-ts-warning' : 
                       'text-ts-warning'
                     }`}>
                       {product.stock}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      ขั้นต่ำ: {product.minStock}
+                      จุดสั่งซื้อ: {(product as any).reorderPoint ?? product.minStock ?? 5}
                     </p>
                   </div>
                 </div>

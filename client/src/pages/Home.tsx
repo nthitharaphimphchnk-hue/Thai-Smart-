@@ -1,22 +1,23 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, Package, Users, MessageCircle, LogIn, LogOut, TrendingUp, UserPlus } from "lucide-react";
+import { ShoppingCart, Package, Users, MessageCircle, LogIn, LogOut, TrendingUp, UserPlus, Settings } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 
 export default function Home() {
-  const { user, loading, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <img src="/mascot.png" alt="Thai Smart" className="w-32 h-32 mx-auto mb-4 animate-bounce" />
-          <p className="text-lg text-muted-foreground">กำลังโหลด...</p>
-        </div>
-      </div>
-    );
-  }
+  // ❌ ลบ loading state - ใช้แค่เช็ก user
+  // if (loading) {
+  //   return (
+  //     <div className="min-h-screen bg-background flex items-center justify-center">
+  //       <div className="text-center">
+  //         <img src="/mascot.png" alt="Thai Smart" className="w-32 h-32 mx-auto mb-4 animate-bounce" />
+  //         <p className="text-lg text-muted-foreground">กำลังโหลด...</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   if (!isAuthenticated) {
     return (
@@ -62,11 +63,11 @@ export default function Home() {
         </div>
         <Button 
           variant="ghost" 
-          size="icon"
+          className="text-secondary-foreground hover:bg-white/10 px-3"
           onClick={() => logout()}
-          className="text-secondary-foreground hover:bg-white/10"
         >
-          <LogOut className="w-5 h-5" />
+          <LogOut className="w-4 h-4 mr-2" />
+          <span className="text-sm font-medium">ออกจากระบบ</span>
         </Button>
       </header>
 
@@ -119,6 +120,10 @@ export default function Home() {
         <Link href="/chat" className="flex flex-col items-center p-2 text-muted-foreground hover:text-primary">
           <MessageCircle className="w-6 h-6" />
           <span className="text-xs mt-1">ถาม AI</span>
+        </Link>
+        <Link href="/settings" className="flex flex-col items-center p-2 text-muted-foreground hover:text-primary">
+          <Settings className="w-6 h-6" />
+          <span className="text-xs mt-1">ตั้งค่า</span>
         </Link>
       </nav>
     </div>

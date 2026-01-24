@@ -14,6 +14,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import PrintReceipt from "./PrintReceipt";
+import ShiftControl from "@/components/ShiftControl";
+
+const VAT_RATE = 0.07;
 
 interface CartItem {
   productId: string;
@@ -36,6 +39,7 @@ export default function Sell() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentType, setPaymentType] = useState<"cash" | "credit">("cash");
   const [customerName, setCustomerName] = useState("");
+  const [useVat, setUseVat] = useState(false);
   const [showPrintReceipt, setShowPrintReceipt] = useState(false);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
   const [receiptText, setReceiptText] = useState("");
@@ -43,8 +47,22 @@ export default function Sell() {
   const { data: products, isLoading } = trpc.products.list.useQuery();
   const { data: receiptData } = trpc.receipts.generate.useQuery(
     { saleId: lastSaleId || "" },
-    { enabled: lastSaleId !== null }
+    { enabled: !!lastSaleId }
   );
+  
+  // ดึง settings (สำหรับ VAT)
+  const { data: settings } = trpc.system.settings.get.useQuery();
+  const vatEnabled = settings?.vatEnabled === true;
+  
+  // ตรวจสอบกะวันนี้ (สำหรับแสดงปุ่มปิดกะใน header)
+  const { data: todayShift } = trpc.shift.today.useQuery(undefined, {
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  
+  // Derived state: มีกะเปิดอยู่หรือไม่
+  const hasOpenShift = todayShift?.status === "open";
   
   const utils = trpc.useUtils();
 
@@ -56,6 +74,7 @@ export default function Sell() {
       setShowCheckout(false);
       setCustomerName("");
       setPaymentType("cash");
+      setUseVat(false); // Reset VAT toggle
     },
     onError: () => {
       toast.error("เกิดข้อผิดพลาด กรุณาลองใหม่");
@@ -160,6 +179,11 @@ export default function Sell() {
     0
   );
 
+  // Calculate VAT breakdown
+  const subtotal = totalAmount;
+  const vatAmount = useVat ? subtotal * VAT_RATE : 0;
+  const totalWithVat = subtotal + vatAmount;
+
   const handleCheckout = () => {
     if (cart.length === 0) {
       toast.error("กรุณาเลือกสินค้าก่อน");
@@ -178,6 +202,7 @@ export default function Sell() {
       items: cart,
       paymentType,
       customerName: paymentType === "credit" ? customerName : undefined,
+      vatRate: vatEnabled ? VAT_RATE : (useVat ? VAT_RATE : 0),
     });
   };
 
@@ -197,8 +222,19 @@ export default function Sell() {
     }
   }, [receiptText, lastSaleId]);
 
+  // Sync VAT toggle with settings
+  useEffect(() => {
+    if (vatEnabled) {
+      setUseVat(true);
+    }
+  }, [vatEnabled]);
+
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* Shift Control Component - Handles dialogs and warning */}
+      <ShiftControl context="sell" />
+
       {/* Print Receipt Dialog */}
       <Dialog open={showPrintReceipt} onOpenChange={setShowPrintReceipt}>
         <DialogContent className="max-w-sm max-h-screen overflow-y-auto">
@@ -225,13 +261,17 @@ export default function Sell() {
           </Button>
         </Link>
         <h1 className="text-xl font-bold flex-1">ขายของ</h1>
-        <div className="relative">
-          <ShoppingCart className="w-6 h-6" />
-          {cart.length > 0 && (
-            <span className="absolute -top-2 -right-2 bg-secondary text-secondary-foreground text-xs w-5 h-5 rounded-full flex items-center justify-center">
-              {cart.length}
-            </span>
-          )}
+        <div className="flex items-center gap-2">
+          {/* ปุ่มปิดกะจาก ShiftControl - render ใน header */}
+          <ShiftControl context="sell" />
+          <div className="relative">
+            <ShoppingCart className="w-6 h-6" />
+            {cart.length > 0 && (
+              <span className="absolute -top-2 -right-2 bg-secondary text-secondary-foreground text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                {cart.length}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -370,11 +410,89 @@ export default function Sell() {
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <div className="text-center mb-4">
-              <p className="text-muted-foreground">ยอดรวม</p>
-              <p className="text-3xl font-bold text-primary">
-                ฿{totalAmount.toLocaleString()}
-              </p>
+            {/* Summary Section */}
+            <div className="space-y-2">
+              {useVat ? (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">ราคาก่อน VAT</span>
+                    <span>฿{subtotal.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">VAT 7%</span>
+                    <span>฿{vatAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="border-t pt-2 mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold">รวมทั้งสิ้น</span>
+                      <span className="text-2xl font-bold text-primary">
+                        ฿{totalWithVat.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center">
+                  <p className="text-muted-foreground mb-1">ยอดรวม</p>
+                  <p className="text-3xl font-bold text-primary">
+                    ฿{totalAmount.toLocaleString()}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* VAT Toggle */}
+            <div
+              className={`flex flex-col gap-3 p-4 rounded-lg border-2 transition-all ${
+                useVat
+                  ? "bg-yellow-50 border-yellow-400"
+                  : "bg-gray-100 border-gray-300"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-sm font-medium ${
+                      useVat ? "text-yellow-800" : "text-gray-500"
+                    }`}
+                  >
+                    คิด VAT 7%
+                  </span>
+                  {vatEnabled && (
+                    <span className="text-xs text-muted-foreground">(บังคับใช้ทั้งร้าน)</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!vatEnabled) {
+                      setUseVat(!useVat);
+                    }
+                  }}
+                  disabled={vatEnabled}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    useVat ? "bg-primary" : "bg-gray-300"
+                  } ${vatEnabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
+                      useVat
+                        ? "translate-x-6 bg-white"
+                        : "translate-x-1 bg-gray-100"
+                    }`}
+                  />
+                </button>
+              </div>
+              {/* Status Message */}
+              <div
+                className={`text-xs ${
+                  useVat ? "text-yellow-800" : "text-gray-500"
+                }`}
+              >
+                {useVat
+                  ? "บิลนี้จะคิด VAT 7% และออกภาษี"
+                  : "บิลนี้ไม่คิด VAT"}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

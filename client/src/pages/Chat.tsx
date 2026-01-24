@@ -61,11 +61,14 @@ export default function Chat() {
     }
   }, [messages]);
 
-  const handleSend = () => {
-    if (!input.trim() || sendMessage.isPending) return;
+  const handleSend = (messageOverride?: string) => {
+    const messageToSend = messageOverride || input.trim();
+    if (!messageToSend || sendMessage.isPending) return;
 
-    const userMessage = input.trim();
-    setInput("");
+    const userMessage = messageToSend;
+    if (!messageOverride) {
+      setInput("");
+    }
     
     setMessages((prev) => [
       ...prev,
@@ -92,6 +95,17 @@ export default function Chat() {
     "ใครค้างเงินอยู่",
     "พรุ่งนี้ต้องซื้ออะไร",
   ];
+
+  const handleQuickQuestion = (question: string) => {
+    setInput(question);
+    inputRef.current?.focus();
+    // Auto send if question is the detailed sales summary
+    if (question === "สรุปยอดวันนี้พร้อมรายการสินค้า") {
+      setTimeout(() => {
+        handleSend();
+      }, 100);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -210,6 +224,21 @@ export default function Chat() {
           </div>
         </div>
       )}
+
+      {/* Quick Action Button - สรุปยอดวันนี้พร้อมรายการสินค้า */}
+      <div className="px-4 py-2 bg-muted/50 border-t border-border">
+        <button
+          onClick={() => {
+            const question = "สรุปยอดวันนี้พร้อมรายการสินค้า";
+            handleSend(question);
+          }}
+          disabled={sendMessage.isPending}
+          className="w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <MessageCircle className="w-5 h-5" />
+          <span>สรุปยอดวันนี้พร้อมรายการสินค้า</span>
+        </button>
+      </div>
 
       {/* Input */}
       <div className="p-4 bg-card border-t border-border">

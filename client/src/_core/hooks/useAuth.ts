@@ -32,8 +32,10 @@ export function useAuth(options?: UseAuthOptions) {
   const initialUserData = getInitialUserData();
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
-    retry: false,
+    staleTime: Infinity,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
     // Use localStorage data as initial data to prevent showing welcome screen immediately
     initialData: initialUserData,
     // But still refetch to verify with server
@@ -70,7 +72,7 @@ export function useAuth(options?: UseAuthOptions) {
     );
     return {
       user: meQuery.data ?? null,
-      loading: meQuery.isLoading || logoutMutation.isPending,
+      loading: false, // ❌ ไม่ใช้ global loading
       error: meQuery.error ?? logoutMutation.error ?? null,
       isAuthenticated: Boolean(meQuery.data),
     };

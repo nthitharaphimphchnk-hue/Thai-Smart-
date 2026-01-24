@@ -30,12 +30,6 @@ const GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserI
 
 class OAuthService {
   constructor(private client: ReturnType<typeof axios.create>) {
-    console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
-    if (!ENV.oAuthServerUrl) {
-      console.error(
-        "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
-      );
-    }
   }
 
   private decodeState(state: string): string {
@@ -122,6 +116,16 @@ class SDKServer {
     code: string,
     state: string
   ): Promise<ExchangeTokenResponse> {
+    if (!ENV.oAuthServerUrl) {
+      throw new Error(
+        "OAuth is not configured (missing OAUTH_SERVER_URL). Set OAUTH_SERVER_URL to enable OAuth login."
+      );
+    }
+    if (!ENV.appId) {
+      throw new Error(
+        "OAuth is not configured (missing VITE_APP_ID). Set VITE_APP_ID to enable OAuth login."
+      );
+    }
     return this.oauthService.getTokenByCode(code, state);
   }
 
@@ -131,6 +135,11 @@ class SDKServer {
    * const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
    */
   async getUserInfo(accessToken: string): Promise<GetUserInfoResponse> {
+    if (!ENV.oAuthServerUrl) {
+      throw new Error(
+        "OAuth is not configured (missing OAUTH_SERVER_URL). Set OAUTH_SERVER_URL to enable OAuth login."
+      );
+    }
     const data = await this.oauthService.getUserInfoByToken({
       accessToken,
     } as ExchangeTokenResponse);
@@ -293,7 +302,7 @@ class SDKServer {
             user = {
               ...userDoc.toObject(),
               id: userDoc._id.toString(),
-            } as User;
+            } as unknown as User;
           }
         }
       } catch (error) {

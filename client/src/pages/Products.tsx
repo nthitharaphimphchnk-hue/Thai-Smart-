@@ -1,8 +1,20 @@
-import { useState, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { ArrowLeft, Package, Plus, Edit2, Trash2, Save, X, Upload, FileText } from "lucide-react";
+import {
+  ArrowLeft,
+  Package,
+  Plus,
+  Edit2,
+  Trash2,
+  Save,
+  X,
+  Upload,
+  FileText,
+  PackagePlus,
+  History,
+} from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import {
@@ -25,22 +37,24 @@ import {
 
 interface ProductForm {
   name: string;
+  barcode: string;
   price: string;
   stock: number;
-  minStock: number;
+  reorderPoint: number;
 }
 
 export default function Products() {
   const [showForm, setShowForm] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<ProductForm>({
     name: "",
+    barcode: "",
     price: "",
     stock: 0,
-    minStock: 5,
+    reorderPoint: 5,
   });
 
   const { data: products, isLoading, refetch } = trpc.products.list.useQuery();
@@ -87,25 +101,28 @@ export default function Products() {
   });
 
   const resetForm = () => {
-    setForm({ name: "", price: "", stock: 0, minStock: 5 });
+    setForm({ name: "", barcode: "", price: "", stock: 0, reorderPoint: 5 });
     setShowForm(false);
     setEditingId(null);
   };
 
   const handleEdit = (product: {
-    id: number;
+    id: string | number;
     name: string;
     price: string;
     stock: number;
-    minStock: number;
+    reorderPoint?: number;
+    minStock?: number;
+    barcode?: string | null;
   }) => {
     setForm({
       name: product.name,
+      barcode: product.barcode ?? "",
       price: product.price,
       stock: product.stock,
-      minStock: product.minStock,
+      reorderPoint: product.reorderPoint ?? product.minStock ?? 5,
     });
-    setEditingId(product.id);
+    setEditingId(String(product.id));
     setShowForm(true);
   };
 
@@ -125,19 +142,28 @@ export default function Products() {
         name: form.name,
         price: form.price,
         stock: form.stock,
-        minStock: form.minStock,
+        reorderPoint: form.reorderPoint,
+        barcode: form.barcode.trim() || undefined,
       });
     } else {
       createProduct.mutate({
         name: form.name,
         price: form.price,
         stock: form.stock,
-        minStock: form.minStock,
+        reorderPoint: form.reorderPoint,
+        barcode: form.barcode.trim() || undefined,
       });
     }
   };
 
-  const parseCSV = (text: string): Array<{ name: string; price: string | number; stock?: number; minStock?: number }> => {
+  const parseCSV = (
+    text: string
+  ): Array<{
+    name: string;
+    price: string | number;
+    stock?: number;
+    reorderPoint?: number;
+  }> => {
     const lines = text.split('\n').filter(line => line.trim());
     if (lines.length === 0) return [];
     
@@ -153,7 +179,7 @@ export default function Products() {
         name: parts[0]?.trim() || '',
         price: parts[1]?.trim() || '0',
         stock: parts[2] ? parseInt(parts[2].trim()) || 0 : undefined,
-        minStock: parts[3] ? parseInt(parts[3].trim()) || 5 : undefined,
+        reorderPoint: parts[3] ? parseInt(parts[3].trim()) || 5 : undefined,
       };
     }).filter(p => p.name); // Filter out empty names
   };
@@ -171,7 +197,12 @@ export default function Products() {
 
     try {
       const text = await file.text();
-      let products: Array<{ name: string; price: string | number; stock?: number; minStock?: number }> = [];
+      let products: Array<{
+        name: string;
+        price: string | number;
+        stock?: number;
+        reorderPoint?: number;
+      }> = [];
 
       if (fileExtension === 'csv') {
         products = parseCSV(text);
@@ -182,7 +213,8 @@ export default function Products() {
             name: item.name || item.ชื่อสินค้า || '',
             price: item.price || item.ราคา || '0',
             stock: item.stock ?? item.จำนวนคงเหลือ,
-            minStock: item.minStock ?? item.แจ้งเตือนเมื่อเหลือ,
+            reorderPoint:
+              item.reorderPoint ?? item.minStock ?? item.แจ้งเตือนเมื่อเหลือ,
           })).filter((p: any) => p.name);
         } else {
           toast.error("ไฟล์ JSON ต้องเป็น array ของสินค้า");
@@ -201,34 +233,66 @@ export default function Products() {
     }
   };
 
+  // Small compatibility adapter: older client code used `minStock` and numeric ids.
+  const productsForUi = useMemo(() => {
+    return (
+      products?.map((p: any) => ({
+        ...p,
+        id: String(p.id),
+        reorderPoint: p.reorderPoint ?? p.minStock ?? 5,
+      })) ?? []
+    );
+  }, [products]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="bg-secondary text-secondary-foreground p-4 flex items-center gap-4">
-        <Link href="/">
-          <Button variant="ghost" size="icon" className="text-secondary-foreground hover:bg-white/10">
-            <ArrowLeft className="w-6 h-6" />
-          </Button>
-        </Link>
-        <h1 className="text-xl font-bold flex-1">จัดการสินค้า</h1>
-        <div className="flex gap-2">
+      <header className="bg-secondary text-secondary-foreground p-4">
+        <div className="flex items-center gap-4 mb-3">
+          <Link href="/">
+            <Button variant="ghost" size="icon" className="text-secondary-foreground hover:bg-white/10">
+              <ArrowLeft className="w-6 h-6" />
+            </Button>
+          </Link>
+          <h1 className="text-xl font-bold flex-1">จัดการสินค้า</h1>
+        </div>
+        {/* Action Buttons - Icon + Text */}
+        <div className="flex flex-wrap gap-2">
+          <Link href="/stock-in">
+            <Button
+              variant="ghost"
+              className="text-secondary-foreground hover:bg-white/10 h-auto py-2 px-3"
+              onClick={() => {}} // Keep handler for consistency
+            >
+              <PackagePlus className="w-4 h-4 mr-2" />
+              <span className="text-sm font-medium">รับสินค้าเข้า</span>
+            </Button>
+          </Link>
+          <Link href="/stock-history">
+            <Button
+              variant="ghost"
+              className="text-secondary-foreground hover:bg-white/10 h-auto py-2 px-3"
+              onClick={() => {}} // Keep handler for consistency
+            >
+              <History className="w-4 h-4 mr-2" />
+              <span className="text-sm font-medium">ประวัติสต็อก</span>
+            </Button>
+          </Link>
           <Button
             variant="ghost"
-            size="icon"
-            className="text-secondary-foreground hover:bg-white/10"
-            onClick={() => setShowImportDialog(true)}
-            title="นำเข้าสินค้า"
-          >
-            <Upload className="w-6 h-6" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-secondary-foreground hover:bg-white/10"
+            className="text-secondary-foreground hover:bg-white/10 h-auto py-2 px-3"
             onClick={() => setShowForm(true)}
-            title="เพิ่มสินค้าใหม่"
           >
-            <Plus className="w-6 h-6" />
+            <Plus className="w-4 h-4 mr-2" />
+            <span className="text-sm font-medium">เพิ่มสินค้าใหม่</span>
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-secondary-foreground hover:bg-white/10 h-auto py-2 px-3"
+            onClick={() => setShowImportDialog(true)}
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            <span className="text-sm font-medium">นำเข้าสินค้า</span>
           </Button>
         </div>
       </header>
@@ -237,7 +301,7 @@ export default function Products() {
       <main className="flex-1 p-4 overflow-y-auto">
         {isLoading ? (
           <div className="text-center py-8 text-muted-foreground">กำลังโหลด...</div>
-        ) : products?.length === 0 ? (
+        ) : productsForUi?.length === 0 ? (
           <div className="text-center py-12">
             <Package className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
             <h2 className="text-xl font-semibold mb-2">ยังไม่มีสินค้า</h2>
@@ -250,9 +314,12 @@ export default function Products() {
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              สินค้าทั้งหมด {products?.length} รายการ
+              สินค้าทั้งหมด {productsForUi?.length} รายการ
             </p>
-            {products?.map((product) => (
+            {productsForUi?.map((product) => {
+              const reorderPoint = product.reorderPoint ?? 5;
+              const isLow = Number(product.stock) <= Number(reorderPoint);
+              return (
               <div key={product.id} className="ts-card">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -262,29 +329,48 @@ export default function Products() {
                     </p>
                     <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
                       <span>คงเหลือ: {product.stock}</span>
-                      <span>ขั้นต่ำ: {product.minStock}</span>
+                      <span>จุดสั่งซื้อ: {reorderPoint}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs ${
+                          isLow ? "bg-ts-warning/20 text-ts-warning" : "bg-ts-success/20 text-ts-success"
+                        }`}
+                      >
+                        {isLow ? "ใกล้หมด" : "ปกติ"}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={`/stock-in?productId=${String(product.id)}`}>
+                      <Button 
+                        variant="ghost" 
+                        className="h-8 px-2 text-xs"
+                        onClick={() => {}}
+                      >
+                        <PackagePlus className="w-3 h-3 mr-1" />
+                        <span>รับเข้า</span>
+                      </Button>
+                    </Link>
                     <Button
                       variant="ghost"
-                      size="icon"
+                      className="h-8 px-2 text-xs"
                       onClick={() => handleEdit(product)}
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-3 h-3 mr-1" />
+                      <span>แก้ไข</span>
                     </Button>
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="text-destructive"
-                      onClick={() => setDeleteId(product.id)}
+                      className="h-8 px-2 text-xs text-destructive hover:text-destructive"
+                      onClick={() => setDeleteId(String(product.id))}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3 h-3 mr-1" />
+                      <span>ลบ</span>
                     </Button>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
@@ -308,6 +394,18 @@ export default function Products() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="ts-input"
                 placeholder="เช่น ปุ๋ยยูเรีย"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm text-muted-foreground mb-2 block">
+                บาร์โค้ดสินค้า
+              </label>
+              <Input
+                value={form.barcode}
+                onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                className="ts-input"
+                placeholder="เช่น 8850123456789"
               />
             </div>
             
@@ -342,8 +440,10 @@ export default function Products() {
                 </label>
                 <Input
                   type="number"
-                  value={form.minStock}
-                  onChange={(e) => setForm({ ...form, minStock: parseInt(e.target.value) || 5 })}
+                  value={form.reorderPoint}
+                  onChange={(e) =>
+                    setForm({ ...form, reorderPoint: parseInt(e.target.value) || 5 })
+                  }
                   className="ts-input"
                 />
               </div>
@@ -445,7 +545,7 @@ export default function Products() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-            <AlertDialogAction
+          <AlertDialogAction
               className="bg-destructive text-destructive-foreground"
               onClick={() => deleteId && deleteProduct.mutate({ id: deleteId })}
             >

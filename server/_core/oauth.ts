@@ -46,6 +46,12 @@ export function registerOAuthRoutes(app: Express) {
 
       res.redirect(302, "/");
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // If OAuth isn't configured, make it explicit and avoid noisy stack traces.
+      if (message.includes("OAuth is not configured")) {
+        res.status(501).json({ error: message });
+        return;
+      }
       console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });
     }

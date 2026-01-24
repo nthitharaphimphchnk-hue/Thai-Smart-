@@ -30,13 +30,13 @@ describe("Receipt Functions", () => {
 
       // ตรวจสอบว่ามีข้อมูลสำคัญ
       expect(result).toContain("THAI SMART POS");
-      expect(result).toContain("ใบเสร็จอย่างย่อ");
+      expect(result).toContain("ใบเสร็จรับเงิน");
       expect(result).toContain("ใบเสร็จที่: 1");
       expect(result).toContain("ลูกค้า: สมชาย");
       expect(result).toContain("ปุ๋ยยูเรีย");
       expect(result).toContain("ปุ๋ยซูเปอร์");
       expect(result).toContain("รวมทั้งหมด:");
-      expect(result).toContain("1150");
+      expect(result).toContain("1,150"); // Formatted with thousand separator
       expect(result).toContain("วิธีชำระ: เงินสด");
       expect(result).toContain("ขอบคุณที่ใช้บริการ");
     });
@@ -62,7 +62,7 @@ describe("Receipt Functions", () => {
 
       expect(result).toContain("วิธีชำระ: ขายเชื่อ");
       expect(result).toContain("สมหญิง");
-      expect(result).toContain("600");
+      expect(result).toContain("600"); // Small number, no separator
     });
 
     it("should format numbers correctly", () => {
@@ -84,7 +84,7 @@ describe("Receipt Functions", () => {
 
       const result = db.formatReceiptText(mockReceiptData);
 
-      expect(result).toContain("50000");
+      expect(result).toContain("50,000"); // Formatted with thousand separator
       expect(result).toContain("ร้านค้า");
     });
 

@@ -1559,15 +1559,28 @@ export function formatFullTaxInvoiceText(invoiceData: {
  * ถ้ายังไม่มี → สร้างใหม่ด้วย default values
  */
 export async function getSettings(): Promise<ISettings> {
-  let settings = await Settings.findOne().lean();
+  // Try to find by singleton field first, then fallback to any document (for migration)
+  let settings = await Settings.findOne({ singleton: "settings" }).lean();
   
   if (!settings) {
-    // สร้าง settings ใหม่ด้วย default values
-    const newSettings = new Settings({
-      vatEnabled: false,
-    });
-    await newSettings.save();
-    settings = newSettings.toObject();
+    // Check if there's an old document without singleton field (migration case)
+    const oldSettings = await Settings.findOne().lean();
+    if (oldSettings) {
+      // Update old document to include singleton field
+      await Settings.updateOne(
+        { _id: oldSettings._id },
+        { $set: { singleton: "settings" } }
+      );
+      settings = { ...oldSettings, singleton: "settings" } as any;
+    } else {
+      // สร้าง settings ใหม่ด้วย default values
+      const newSettings = new Settings({
+        singleton: "settings",
+        vatEnabled: false,
+      });
+      await newSettings.save();
+      settings = newSettings.toObject();
+    }
   }
   
   return settings as ISettings;
@@ -1581,7 +1594,7 @@ export async function updateSettings(updates: Partial<Pick<ISettings, "vatEnable
   await getSettings();
   
   const updated = await Settings.findOneAndUpdate(
-    {},
+    { singleton: "settings" },
     { $set: updates },
     { new: true, upsert: true }
   ).lean();

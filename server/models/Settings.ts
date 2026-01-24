@@ -5,6 +5,7 @@ import mongoose, { Schema, Document } from "mongoose";
  * ใช้ singleton pattern (มีแค่ 1 record ใน DB)
  */
 export interface ISettings extends Document {
+  singleton?: string; // Always "settings" to enforce singleton pattern (optional for backward compatibility)
   vatEnabled: boolean;
   // ข้อมูลผู้ขาย (สำหรับใบกำกับภาษีเต็ม)
   sellerName?: string; // ชื่อร้าน
@@ -16,6 +17,12 @@ export interface ISettings extends Document {
 
 const SettingsSchema = new Schema<ISettings>(
   {
+    singleton: {
+      type: String,
+      default: "settings",
+      required: true,
+      immutable: true,
+    },
     vatEnabled: {
       type: Boolean,
       default: false,
@@ -43,6 +50,6 @@ const SettingsSchema = new Schema<ISettings>(
 );
 
 // Ensure only one settings document exists
-SettingsSchema.index({}, { unique: true });
+SettingsSchema.index({ singleton: 1 }, { unique: true });
 
 export const Settings = mongoose.model<ISettings>("Settings", SettingsSchema);

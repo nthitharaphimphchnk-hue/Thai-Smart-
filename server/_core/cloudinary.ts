@@ -1,44 +1,32 @@
+/**
+ * Cloudinary ปิดชั่วคราว — ใช้รูป local (client/public/products/) เท่านั้น
+ * ใส่ชื่อไฟล์ใน imageUrl เช่น pruan.jpg → resolveProductImage map เป็น /products/pruan.jpg
+ *
+ * เมื่อจะเปิดใช้ใหม่: uncomment โค้ดด้านล่าง และเปิด products.uploadImage ใน routers.ts
+ */
+/*
 import { v2 as cloudinary } from "cloudinary";
 import { ENV } from "./env";
 
-const FOLDER = "thai-smart/products";
+cloudinary.config({
+  cloudinary_url: process.env.CLOUDINARY_URL,
+});
+
+export { cloudinary };
 
 export function isCloudinaryConfigured(): boolean {
-  return !!(ENV.cloudinary.cloudName && ENV.cloudinary.apiKey && ENV.cloudinary.apiSecret);
+  return !!ENV.cloudinaryUrl;
 }
 
-/**
- * อัปโหลดรูปสินค้าไป Cloudinary
- * @param dataUri - data URI เช่น "data:image/jpeg;base64,..."
- * @param publicIdPrefix - optional prefix สำหรับ public_id (จะถูก sanitize)
- * @returns URL เต็มของรูปบน Cloudinary
- */
-export async function uploadProductImage(
-  dataUri: string,
-  publicIdPrefix?: string | null
-): Promise<string> {
+export async function uploadProductImage(dataUri: string): Promise<string> {
   if (!isCloudinaryConfigured()) {
-    throw new Error("Cloudinary ไม่ได้ตั้งค่า (ตรวจสอบ CLOUDINARY_* ใน .env)");
+    throw new Error("Cloudinary ไม่ได้ตั้งค่า (ตรวจสอบ CLOUDINARY_URL ใน .env)");
   }
-
-  cloudinary.config({
-    cloud_name: ENV.cloudinary.cloudName,
-    api_key: ENV.cloudinary.apiKey,
-    api_secret: ENV.cloudinary.apiSecret,
-  });
-
-  // public_id: lowercase, no spaces, unique (เพิ่ม timestamp)
-  const safeId = publicIdPrefix
-    ? publicIdPrefix.replace(/\s+/g, "-").toLowerCase().replace(/[^a-z0-9-_.]/g, "").slice(0, 80)
-    : "";
-  const publicId = safeId ? `${safeId}-${Date.now()}` : String(Date.now());
-
   const result = await cloudinary.uploader.upload(dataUri, {
-    folder: FOLDER,
-    public_id: publicId,
+    folder: "thai-smart/products",
     overwrite: true,
     resource_type: "image",
   });
-
   return result.secure_url;
 }
+*/

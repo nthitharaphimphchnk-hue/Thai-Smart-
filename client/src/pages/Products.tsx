@@ -46,24 +46,13 @@ interface ProductForm {
   imageUrl?: string;
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-      resolve(base64 ?? "");
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function Products() {
   const [showForm, setShowForm] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<ProductForm>({
@@ -74,12 +63,7 @@ export default function Products() {
     reorderPoint: "",
     imageUrl: undefined,
   });
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-
   const { data: products, isLoading, refetch } = trpc.products.list.useQuery();
-  const uploadImage = trpc.products.uploadImage.useMutation({
-    onError: (e) => toast.error(e.message || "อัปโหลดรูปไม่สำเร็จ"),
-  });
 
   const createProduct = trpc.products.create.useMutation({
     onSuccess: () => {
@@ -123,6 +107,11 @@ export default function Products() {
   });
 
   const resetForm = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreviewUrl(null);
     setForm({ name: "", barcode: "", price: "", stock: "", reorderPoint: "", imageUrl: undefined });
     setShowForm(false);
     setEditingId(null);
@@ -148,40 +137,25 @@ export default function Products() {
     });
     setEditingId(String(product.id));
     setShowForm(true);
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreviewUrl(null);
   };
 
-  const handleImageButtonClick = () => {
-    imageInputRef.current?.click();
-  };
-
-  const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      toast.error("อนุญาตเฉพาะรูป jpg, png, webp");
-      return;
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("รูปใหญ่เกิน 5MB");
-      return;
-    }
-    try {
-      setIsUploadingImage(true);
-      const fileBase64 = await fileToBase64(file);
-      const { filename } = await uploadImage.mutateAsync({
-        fileBase64,
-        contentType: file.type,
-        originalName: file.name,
-      });
-      setForm((prev) => ({ ...prev, imageUrl: filename }));
-      toast.success("อัปโหลดรูปสินค้าสำเร็จ");
-    } catch (error) {
-      console.error("Image upload failed", error);
-    } finally {
-      setIsUploadingImage(false);
-      event.target.value = "";
-    }
+    const url = URL.createObjectURL(file);
+    previewUrlRef.current = url;
+    setPreviewUrl(url);
+    setForm((prev) => ({ ...prev, imageUrl: file.name }));
+    e.target.value = "";
   };
 
   const handleSubmit = () => {
@@ -496,53 +470,59 @@ export default function Products() {
               />
             </div>
 
-            {/* Product image — ทางเลือก A: พิมพ์ชื่อไฟล์ (วางรูปที่ public/products/ แล้ว) */}
+            {/* รูปสินค้า — local เท่านั้น: เลือกไฟล์ → preview ทันที, ไฟล์ต้องอยู่ใน client/public/products/ */}
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground mb-1 block">
                 รูปสินค้า (ไม่บังคับ)
               </label>
+              <p className="text-xs text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
+                เลือกรูปจากเครื่อง → ใส่ชื่อไฟล์อัตโนมัติ ไฟล์ต้องวางในโฟลเดอร์ <strong>client/public/products/</strong> ก่อนบันทึก
+              </p>
               <div className="flex items-center gap-3">
-                <div className="w-16 h-16 md:w-20 md:h-20 rounded-md bg-muted flex items-center justify-center overflow-hidden border relative">
-                  <ImageIcon className="w-7 h-7 text-muted-foreground" />
-                  {resolveProductImage(form.imageUrl) && (
+                <div className="w-20 h-20 md:w-24 md:h-24 rounded-md bg-muted flex items-center justify-center overflow-hidden border relative shrink-0">
+                  {previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : resolveProductImage(form.imageUrl) ? (
                     <img
                       src={resolveProductImage(form.imageUrl) as string}
                       alt={form.name || "รูปสินค้า"}
-                      className="absolute inset-0 w-full h-full object-cover"
+                      className="w-full h-full object-cover"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
                     />
+                  ) : null}
+                  {!previewUrl && !resolveProductImage(form.imageUrl) && (
+                    <ImageIcon className="w-8 h-8 text-muted-foreground" />
                   )}
                 </div>
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-2 min-w-0">
                   <input
                     ref={imageInputRef}
                     type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    capture="environment"
+                    accept="image/*"
                     className="hidden"
-                    onChange={handleImageChange}
+                    onChange={handleImageFileChange}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     className="w-full justify-center"
-                    onClick={handleImageButtonClick}
-                    disabled={isUploadingImage}
+                    onClick={() => imageInputRef.current?.click()}
                   >
                     <Upload className="w-4 h-4 mr-2" />
-                    {isUploadingImage ? "กำลังอัปโหลด..." : "อัปโหลดรูปสินค้า"}
+                    อัปโหลดรูปสินค้า
                   </Button>
-                  <p className="text-xs text-muted-foreground">
-                    หรือใส่ชื่อไฟล์ (ถ้าวางไฟล์ใน public/products/ แล้ว):{" "}
-                  </p>
                   <Input
                     type="text"
                     value={form.imageUrl ?? ""}
-                    onChange={(e) => setForm((prev) => ({ ...prev, imageUrl: e.target.value.trim() || undefined }))}
-                    className="ts-input"
-                    placeholder="เช่น pruan.jpg"
+                    readOnly
+                    className="ts-input bg-muted/50"
+                    placeholder="ชื่อไฟล์ (จากปุ่มด้านบน)"
                   />
                 </div>
               </div>

@@ -37,7 +37,7 @@ export default function ShiftControl({ context = "reports" }: ShiftControlProps)
 
   // State สำหรับเปิดกะ
   const [showOpenShiftDialog, setShowOpenShiftDialog] = useState(false);
-  const [openingCash, setOpeningCash] = useState<string>("0");
+  const [openingCash, setOpeningCash] = useState<string>("");
 
   // State สำหรับปิดกะ
   const [showCloseShiftDialog, setShowCloseShiftDialog] = useState(false);
@@ -223,9 +223,8 @@ export default function ShiftControl({ context = "reports" }: ShiftControlProps)
                     เงินสดที่นับได้จริง (บาท)
                   </label>
                   <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={closingCash}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -233,7 +232,7 @@ export default function ShiftControl({ context = "reports" }: ShiftControlProps)
                         setClosingCash(value);
                       }
                     }}
-                    placeholder="0"
+                    placeholder=""
                     className="ts-input text-lg text-center"
                     autoFocus
                     disabled={closeShift.isPending}
@@ -379,18 +378,16 @@ export default function ShiftControl({ context = "reports" }: ShiftControlProps)
                 เงินสดตั้งต้นในลิ้นชัก (บาท)
               </label>
               <Input
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={openingCash}
                 onChange={(e) => {
                   const value = e.target.value;
-                  // อนุญาตให้ใส่ตัวเลข, จุดทศนิยม, และลบ (สำหรับลบตัวเลข)
                   if (value === "" || /^\d*\.?\d*$/.test(value)) {
                     setOpeningCash(value);
                   }
                 }}
-                placeholder="0"
+                placeholder=""
                 className="ts-input text-lg text-center"
                 autoFocus
                 disabled={openShift.isPending}

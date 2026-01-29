@@ -41,8 +41,8 @@ interface ProductForm {
   name: string;
   barcode: string;
   price: string;
-  stock: number;
-  reorderPoint: number;
+  stock: string;
+  reorderPoint: string;
   imageUrl?: string;
 }
 
@@ -70,8 +70,8 @@ export default function Products() {
     name: "",
     barcode: "",
     price: "",
-    stock: 0,
-    reorderPoint: 5,
+    stock: "",
+    reorderPoint: "",
     imageUrl: undefined,
   });
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -123,7 +123,7 @@ export default function Products() {
   });
 
   const resetForm = () => {
-    setForm({ name: "", barcode: "", price: "", stock: 0, reorderPoint: 5, imageUrl: undefined });
+    setForm({ name: "", barcode: "", price: "", stock: "", reorderPoint: "", imageUrl: undefined });
     setShowForm(false);
     setEditingId(null);
   };
@@ -142,8 +142,8 @@ export default function Products() {
       name: product.name,
       barcode: product.barcode ?? "",
       price: product.price,
-      stock: product.stock,
-      reorderPoint: product.reorderPoint ?? product.minStock ?? 5,
+      stock: String(product.stock),
+      reorderPoint: String(product.reorderPoint ?? product.minStock ?? 5),
       imageUrl: product.imageUrl ?? undefined,
     });
     setEditingId(String(product.id));
@@ -199,8 +199,8 @@ export default function Products() {
         id: editingId,
         name: form.name,
         price: form.price,
-        stock: form.stock,
-        reorderPoint: form.reorderPoint,
+        stock: Number(form.stock || 0),
+        reorderPoint: Number(form.reorderPoint || 5),
         barcode: form.barcode.trim() || undefined,
         imageUrl: form.imageUrl || undefined,
       });
@@ -208,8 +208,8 @@ export default function Products() {
       createProduct.mutate({
         name: form.name,
         price: form.price,
-        stock: form.stock,
-        reorderPoint: form.reorderPoint,
+        stock: Number(form.stock || 0),
+        reorderPoint: Number(form.reorderPoint || 5),
         barcode: form.barcode.trim() || undefined,
         imageUrl: form.imageUrl || undefined,
       });
@@ -553,37 +553,52 @@ export default function Products() {
                 ราคาขาย (บาท) *
               </label>
               <Input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "" || /^\d*\.?\d*$/.test(v)) setForm({ ...form, price: v });
+                }}
                 className="ts-input"
-                placeholder="0"
+                placeholder=""
               />
             </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-muted-foreground mb-2 block">
-                  จำนวนคงเหลือ
+                  จำนวนสินค้า (รับเข้าครั้งแรก)
                 </label>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={form.stock}
-                  onChange={(e) => setForm({ ...form, stock: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (/^\d*$/.test(v)) setForm({ ...form, stock: v });
+                  }}
                   className="ts-input"
+                  placeholder=""
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  ใส่จำนวนสินค้าที่รับเข้าร้านครั้งแรก ระบบจะใช้เป็นสต๊อกเริ่มต้น
+                </p>
               </div>
               <div>
                 <label className="text-sm text-muted-foreground mb-2 block">
                   แจ้งเตือนเมื่อเหลือ
                 </label>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={form.reorderPoint}
-                  onChange={(e) =>
-                    setForm({ ...form, reorderPoint: parseInt(e.target.value) || 5 })
-                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (/^\d*$/.test(v)) setForm({ ...form, reorderPoint: v });
+                  }}
                   className="ts-input"
+                  placeholder=""
                 />
               </div>
             </div>

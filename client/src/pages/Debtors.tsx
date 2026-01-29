@@ -160,11 +160,15 @@ export default function Debtors() {
                   จำนวนเงินที่รับ
                 </label>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={payAmount}
-                  onChange={(e) => setPayAmount(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "" || /^\d*\.?\d*$/.test(v)) setPayAmount(v);
+                  }}
                   className="ts-input text-center text-xl font-bold"
-                  placeholder="0"
+                  placeholder=""
                 />
               </div>
             </div>

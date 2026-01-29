@@ -19,7 +19,7 @@ export default function StockIn() {
   }, [search]);
 
   const [productId, setProductId] = useState<string>(initialProductId);
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantity, setQuantity] = useState<string>("");
   const [note, setNote] = useState<string>("");
 
   const selectedProduct = useMemo(
@@ -45,13 +45,14 @@ export default function StockIn() {
       toast.error("กรุณาเลือกสินค้า");
       return;
     }
-    if (!Number.isFinite(quantity) || quantity <= 0) {
+    const qty = Number(quantity || 0);
+    if (!Number.isFinite(qty) || qty <= 0) {
       toast.error("จำนวนต้องมากกว่า 0");
       return;
     }
     stockInMutation.mutate({
       productId,
-      quantity,
+      quantity: qty,
       note: note.trim() || undefined,
     });
   };
@@ -106,11 +107,15 @@ export default function StockIn() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">จำนวนรับเข้า</label>
                 <Input
+                  type="text"
                   inputMode="numeric"
-                  type="number"
-                  min={1}
                   value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (/^\d*$/.test(v)) setQuantity(v);
+                  }}
+                  className="ts-input"
+                  placeholder=""
                 />
               </div>
 

@@ -61,25 +61,41 @@ export default function Chat() {
     }
   }, [messages]);
 
-  const handleSend = (messageOverride?: string) => {
-    const messageToSend = messageOverride || input.trim();
-    if (!messageToSend || sendMessage.isPending) return;
+  /**
+   * Internal send helper (string-only). Never pass events here.
+   */
+  const sendText = (rawText: string, opts?: { clearInput?: boolean }) => {
+    const text = rawText.trim();
+    if (!text || sendMessage.isPending) return;
 
-    const userMessage = messageToSend;
-    if (!messageOverride) {
+    if (opts?.clearInput) {
       setInput("");
     }
-    
+
     setMessages((prev) => [
       ...prev,
       {
         role: "user",
-        content: userMessage,
+        content: text,
         timestamp: new Date(),
       },
     ]);
 
-    sendMessage.mutate({ message: userMessage });
+    sendMessage.mutate({ message: text });
+  };
+
+  /**
+   * Safe, parameterless handler for UI events (button click / Enter key).
+   */
+  const handleSend = () => {
+    sendText(input, { clearInput: true });
+  };
+
+  /**
+   * Safe helper for sending a known string (e.g. quick actions).
+   */
+  const handleSendText = (text: string) => {
+    sendText(text, { clearInput: false });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -230,7 +246,7 @@ export default function Chat() {
         <button
           onClick={() => {
             const question = "สรุปยอดวันนี้พร้อมรายการสินค้า";
-            handleSend(question);
+            handleSendText(question);
           }}
           disabled={sendMessage.isPending}
           className="w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { resolveProductImage } from "@/utils/resolveProductImage";
 import {
   ArrowLeft,
   Package,
@@ -14,6 +15,7 @@ import {
   FileText,
   PackagePlus,
   History,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -41,6 +43,20 @@ interface ProductForm {
   price: string;
   stock: number;
   reorderPoint: number;
+  imageUrl?: string;
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+      resolve(base64 ?? "");
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function Products() {
@@ -49,16 +65,22 @@ export default function Products() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<ProductForm>({
     name: "",
     barcode: "",
     price: "",
     stock: 0,
     reorderPoint: 5,
+    imageUrl: undefined,
   });
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const { data: products, isLoading, refetch } = trpc.products.list.useQuery();
-  
+  const uploadImage = trpc.products.uploadImage.useMutation({
+    onError: (e) => toast.error(e.message || "อัปโหลดรูปไม่สำเร็จ"),
+  });
+
   const createProduct = trpc.products.create.useMutation({
     onSuccess: () => {
       toast.success("เพิ่มสินค้าสำเร็จ");
@@ -101,7 +123,7 @@ export default function Products() {
   });
 
   const resetForm = () => {
-    setForm({ name: "", barcode: "", price: "", stock: 0, reorderPoint: 5 });
+    setForm({ name: "", barcode: "", price: "", stock: 0, reorderPoint: 5, imageUrl: undefined });
     setShowForm(false);
     setEditingId(null);
   };
@@ -114,6 +136,7 @@ export default function Products() {
     reorderPoint?: number;
     minStock?: number;
     barcode?: string | null;
+    imageUrl?: string | null;
   }) => {
     setForm({
       name: product.name,
@@ -121,9 +144,44 @@ export default function Products() {
       price: product.price,
       stock: product.stock,
       reorderPoint: product.reorderPoint ?? product.minStock ?? 5,
+      imageUrl: product.imageUrl ?? undefined,
     });
     setEditingId(String(product.id));
     setShowForm(true);
+  };
+
+  const handleImageButtonClick = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast.error("อนุญาตเฉพาะรูป jpg, png, webp");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("รูปใหญ่เกิน 5MB");
+      return;
+    }
+    try {
+      setIsUploadingImage(true);
+      const fileBase64 = await fileToBase64(file);
+      const { filename } = await uploadImage.mutateAsync({
+        fileBase64,
+        contentType: file.type,
+        originalName: file.name,
+      });
+      setForm((prev) => ({ ...prev, imageUrl: filename }));
+      toast.success("อัปโหลดรูปสินค้าสำเร็จ");
+    } catch (error) {
+      console.error("Image upload failed", error);
+    } finally {
+      setIsUploadingImage(false);
+      event.target.value = "";
+    }
   };
 
   const handleSubmit = () => {
@@ -144,6 +202,7 @@ export default function Products() {
         stock: form.stock,
         reorderPoint: form.reorderPoint,
         barcode: form.barcode.trim() || undefined,
+        imageUrl: form.imageUrl || undefined,
       });
     } else {
       createProduct.mutate({
@@ -152,6 +211,7 @@ export default function Products() {
         stock: form.stock,
         reorderPoint: form.reorderPoint,
         barcode: form.barcode.trim() || undefined,
+        imageUrl: form.imageUrl || undefined,
       });
     }
   };
@@ -320,55 +380,82 @@ export default function Products() {
               const reorderPoint = product.reorderPoint ?? 5;
               const isLow = Number(product.stock) <= Number(reorderPoint);
               return (
-              <div key={product.id} className="ts-card">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{product.name}</h3>
-                    <p className="text-primary font-bold text-xl">
-                      ฿{parseFloat(product.price).toLocaleString()}
-                    </p>
-                    <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
-                      <span>คงเหลือ: {product.stock}</span>
-                      <span>จุดสั่งซื้อ: {reorderPoint}</span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs ${
-                          isLow ? "bg-ts-warning/20 text-ts-warning" : "bg-ts-success/20 text-ts-success"
-                        }`}
-                      >
-                        {isLow ? "ใกล้หมด" : "ปกติ"}
-                      </span>
+                <div key={product.id} className="ts-card">
+                  <div className="flex items-start gap-3">
+                    {/* Thumbnail */}
+                    <div className="flex-shrink-0">
+                      <div className="w-20 h-20 rounded-md bg-muted flex items-center justify-center overflow-hidden">
+                        {resolveProductImage(product.imageUrl as string | null) ? (
+                          <img
+                            src={resolveProductImage(product.imageUrl as string | null)!}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // ถ้าโหลดรูปไม่ได้ → ซ่อนรูป → เหลือ placeholder
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          // Placeholder
+                          <div className="text-muted-foreground">
+                            📦
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Details + actions */}
+                    <div className="flex-1 flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-lg truncate">{product.name}</h3>
+                        <p className="text-primary font-bold text-xl">
+                          ฿{parseFloat(product.price).toLocaleString()}
+                        </p>
+                        <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
+                          <span>คงเหลือ: {product.stock}</span>
+                          <span>จุดสั่งซื้อ: {reorderPoint}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs ${
+                              isLow
+                                ? "bg-ts-warning/20 text-ts-warning"
+                                : "bg-ts-success/20 text-ts-success"
+                            }`}
+                          >
+                            {isLow ? "ใกล้หมด" : "ปกติ"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col md:flex-row flex-wrap gap-1 md:gap-2 justify-end">
+                        <Link href={`/stock-in?productId=${String(product.id)}`}>
+                          <Button
+                            variant="ghost"
+                            className="h-8 px-2 text-xs"
+                            onClick={() => {}}
+                          >
+                            <PackagePlus className="w-3 h-3 mr-1" />
+                            <span>รับเข้า</span>
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          className="h-8 px-2 text-xs"
+                          onClick={() => handleEdit(product)}
+                        >
+                          <Edit2 className="w-3 h-3 mr-1" />
+                          <span>แก้ไข</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="h-8 px-2 text-xs text-destructive hover:text-destructive"
+                          onClick={() => setDeleteId(String(product.id))}
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          <span>ลบ</span>
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link href={`/stock-in?productId=${String(product.id)}`}>
-                      <Button 
-                        variant="ghost" 
-                        className="h-8 px-2 text-xs"
-                        onClick={() => {}}
-                      >
-                        <PackagePlus className="w-3 h-3 mr-1" />
-                        <span>รับเข้า</span>
-                      </Button>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      className="h-8 px-2 text-xs"
-                      onClick={() => handleEdit(product)}
-                    >
-                      <Edit2 className="w-3 h-3 mr-1" />
-                      <span>แก้ไข</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="h-8 px-2 text-xs text-destructive hover:text-destructive"
-                      onClick={() => setDeleteId(String(product.id))}
-                    >
-                      <Trash2 className="w-3 h-3 mr-1" />
-                      <span>ลบ</span>
-                    </Button>
-                  </div>
                 </div>
-              </div>
               );
             })}
           </div>
@@ -407,6 +494,58 @@ export default function Products() {
                 className="ts-input"
                 placeholder="เช่น 8850123456789"
               />
+            </div>
+
+            {/* Product image — ทางเลือก A: พิมพ์ชื่อไฟล์ (วางรูปที่ public/products/ แล้ว) */}
+            <div className="space-y-2">
+              <label className="text-sm text-muted-foreground mb-1 block">
+                รูปสินค้า (ไม่บังคับ)
+              </label>
+              <div className="flex items-center gap-3">
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-md bg-muted flex items-center justify-center overflow-hidden border relative">
+                  <ImageIcon className="w-7 h-7 text-muted-foreground" />
+                  {resolveProductImage(form.imageUrl) && (
+                    <img
+                      src={resolveProductImage(form.imageUrl) as string}
+                      alt={form.name || "รูปสินค้า"}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleImageChange}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-center"
+                    onClick={handleImageButtonClick}
+                    disabled={isUploadingImage}
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    {isUploadingImage ? "กำลังอัปโหลด..." : "อัปโหลดรูปสินค้า"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    หรือใส่ชื่อไฟล์ (ถ้าวางไฟล์ใน public/products/ แล้ว):{" "}
+                  </p>
+                  <Input
+                    type="text"
+                    value={form.imageUrl ?? ""}
+                    onChange={(e) => setForm((prev) => ({ ...prev, imageUrl: e.target.value.trim() || undefined }))}
+                    className="ts-input"
+                    placeholder="เช่น pruan.jpg"
+                  />
+                </div>
+              </div>
             </div>
             
             <div>

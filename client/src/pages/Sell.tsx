@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { resolveProductImage } from "@/utils/resolveProductImage";
 import { playBeep, playOutOfStockBeep } from "@/lib/sound";
-import { ArrowLeft, Plus, Minus, ShoppingCart, Trash2, CreditCard, Banknote, Check, Printer } from "lucide-react";
+import { ArrowLeft, Plus, Minus, ShoppingCart, Trash2, CreditCard, Banknote, Check, Printer, Package } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import {
@@ -310,20 +311,42 @@ export default function Sell() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             {filteredProducts?.map((product) => (
               <button
                 key={product.id}
                 onClick={() => addToCart(product)}
-                className="ts-card text-left hover:border-primary transition-colors"
+                className="ts-card text-left hover:border-primary transition-colors flex flex-col items-stretch"
               >
-                <h3 className="font-semibold text-lg truncate">{product.name}</h3>
-                <p className="text-primary font-bold text-xl">
-                  ฿{parseFloat(product.price).toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  คงเหลือ: {product.stock} ชิ้น
-                </p>
+                {/* Thumbnail */}
+                <div className="w-full mb-2">
+                  <div className="relative w-full aspect-square rounded-md bg-muted overflow-hidden flex items-center justify-center">
+                    <Package className="w-8 h-8 text-muted-foreground" />
+                    {resolveProductImage(product.imageUrl as string | null) && (
+                      <img
+                        src={resolveProductImage(product.imageUrl as string | null) as string}
+                        alt={product.name}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-lg truncate">
+                    {product.name}
+                  </h3>
+                  <p className="text-primary font-bold text-xl">
+                    ฿{parseFloat(product.price).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    คงเหลือ: {product.stock} ชิ้น
+                  </p>
+                </div>
               </button>
             ))}
           </div>

@@ -1,10 +1,14 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { uploadProductImage as uploadToCloudinary } from "./_core/cloudinary";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "./db";
+
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
 export const appRouter = router({
   system: systemRouter,
@@ -110,7 +114,39 @@ export const appRouter = router({
     list: protectedProcedure.query(async ({ ctx }) => {
       return db.getProductsByUser(ctx.user.id);
     }),
-    
+
+    /** อัปโหลดรูปสินค้าไป Cloudinary → คืน URL เต็ม */
+    uploadImage: protectedProcedure
+      .input(
+        z.object({
+          fileBase64: z.string().min(1),
+          contentType: z.string().optional().nullable(),
+          originalName: z.string().optional().nullable(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const buf = Buffer.from(input.fileBase64, "base64");
+        if (buf.length > MAX_IMAGE_SIZE_BYTES) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `รูปใหญ่เกิน ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB`,
+          });
+        }
+        const contentType = input.contentType ?? "image/jpeg";
+        if (!ALLOWED_IMAGE_TYPES.includes(contentType.toLowerCase())) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "อนุญาตเฉพาะ jpg, jpeg, png, webp",
+          });
+        }
+        const dataUri = `data:${contentType};base64,${input.fileBase64}`;
+        const prefix = input.originalName
+          ? input.originalName.replace(/\.[^.]+$/i, "").trim()
+          : null;
+        const url = await uploadToCloudinary(dataUri, prefix);
+        return { url };
+      }),
+
     create: protectedProcedure
       .input(z.object({
         name: z.string().min(1),
@@ -119,6 +155,7 @@ export const appRouter = router({
         reorderPoint: z.number().default(5),
         minStock: z.number().optional(), // legacy alias
         barcode: z.string().optional(),
+        imageUrl: z.string().optional().nullable(),
       }))
       .mutation(async ({ ctx, input }) => {
         const id = await db.createProduct({
@@ -128,6 +165,7 @@ export const appRouter = router({
           stock: input.stock,
           reorderPoint: input.reorderPoint ?? input.minStock,
           barcode: input.barcode,
+          imageUrl: input.imageUrl,
         });
         return { id };
       }),
@@ -141,6 +179,7 @@ export const appRouter = router({
         reorderPoint: z.number().optional(),
         minStock: z.number().optional(), // legacy alias
         barcode: z.string().optional(),
+        imageUrl: z.string().optional().nullable(),
       }))
       .mutation(async ({ ctx, input }) => {
         const { id, ...data } = input;
@@ -174,6 +213,7 @@ export const appRouter = router({
           stock: z.number().optional(),
           reorderPoint: z.number().optional(),
           minStock: z.number().optional(), // legacy alias
+          imageUrl: z.string().optional().nullable(),
         })),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -184,6 +224,7 @@ export const appRouter = router({
             price: typeof p.price === "string" ? p.price : String(p.price),
             stock: p.stock,
             reorderPoint: p.reorderPoint ?? p.minStock,
+            imageUrl: p.imageUrl,
           }));
           
           const createdIds = await db.createProductsBulk(productsToImport);

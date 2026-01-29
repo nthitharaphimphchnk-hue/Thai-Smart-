@@ -4,6 +4,7 @@ export interface IProduct extends Document {
   userId: mongoose.Types.ObjectId;
   name: string;
   barcode?: string | null;
+  imageUrl?: string | null;
   price: number;
   stock: number;
   /**
@@ -38,6 +39,12 @@ const ProductSchema = new Schema<IProduct>(
       maxlength: 100,
       index: true,
       sparse: true,
+    },
+    imageUrl: {
+      type: String,
+      default: null,
+      required: false,
+      maxlength: 2000,
     },
     price: {
       type: Number,

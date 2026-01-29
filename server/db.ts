@@ -213,6 +213,7 @@ export type InsertProduct = {
   reorderPoint?: number;
   minStock?: number; // legacy alias
   barcode?: string | null;
+  imageUrl?: string | null;
 };
 
 export type Product = IProduct & { id: number | string };
@@ -228,6 +229,7 @@ export async function createProduct(product: InsertProduct) {
     reorderPoint,
     minStock: reorderPoint, // keep in sync for older UI/queries
     barcode: product.barcode ?? null,
+    imageUrl: product.imageUrl ?? null,
   });
 
   const saved = await newProduct.save();
@@ -242,6 +244,7 @@ export async function createProductsBulk(products: InsertProduct[]) {
     stock: product.stock ?? 0,
     reorderPoint: product.reorderPoint ?? product.minStock ?? 5,
     minStock: product.reorderPoint ?? product.minStock ?? 5,
+    imageUrl: product.imageUrl ?? null,
   }));
 
   // Validate all products before inserting
@@ -321,6 +324,7 @@ export async function updateProduct(id: string | number, userId: string | number
     updateData.minStock = reorderPoint; // keep in sync for older UI/queries
   }
   if (data.barcode !== undefined) updateData.barcode = data.barcode ?? null;
+  if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl ?? null;
 
   await Product.updateOne(
     { _id: toObjectId(id), userId: toUserId(userId) },
